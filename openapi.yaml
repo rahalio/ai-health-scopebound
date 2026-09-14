@@ -1,0 +1,2063 @@
+openapi: 3.0.3
+info:
+  title: Scopebound
+  version: 0.1.0
+  description: >-
+    Care-team roster and delegation ledger for mixed human-machine care teams.
+    Software agents are credentialed as teammates with an organisation-authored
+    scope of practice; every clinical task carries an accountable performer, a
+    named supervising clinician, a patient consent to machine involvement, and a
+    clocked escalation path. Overrides, subgroup performance and safety events are
+    first-class so that machine-performed care remains traceable to a licence.
+  x-product-slug: ai-health-scopebound
+  x-source: ai-in-health/Accenture-Health-Meet-Todays-Healthcare-Team-Patients-Doctors-Machines/
+servers:
+  - url: https://api.example.com
+tags:
+  - name: Teammates
+    description: Human clinicians and machine agents on the care-team roster, with credentialing
+  - name: Scopes
+    description: Versioned scopes of practice, task classes, and scope suspension
+  - name: Tasks
+    description: Plan-of-care tasks, delegation grants, and revocation
+  - name: Consent
+    description: Patient machine-involvement preferences and withdrawal
+  - name: Escalations
+    description: Clocked deterioration escalation with tiered acknowledgement
+  - name: Handoffs
+    description: Structured accountability transfer between teammates
+  - name: Surveillance
+    description: Override telemetry, subgroup performance, and panel capacity
+  - name: Safety
+    description: Near-miss and harm events involving machine teammates
+  - name: Audit
+    description: Per-task accountability reconstruction and access trails
+paths:
+  /v1/teammates:
+    get:
+      operationId: listTeammates
+      summary: List human and machine teammates on the roster
+      tags: [Teammates]
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+        - name: kind
+          in: query
+          schema:
+            type: string
+            enum: [human_clinician, machine_agent]
+        - name: rosterStatus
+          in: query
+          schema:
+            type: string
+            enum: [candidate, shadow, live, suspended, retired]
+      responses:
+        "200":
+          description: Teammates page
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListEnvelopeTeammate"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    post:
+      operationId: registerTeammate
+      summary: Register a clinician or a candidate machine agent
+      tags: [Teammates]
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TeammateCreate"
+      responses:
+        "201":
+          description: Teammate registered as candidate
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DataEnvelopeTeammate"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+  /v1/teammates/{teammateId}:
+    parameters:
+      - $ref: "#/components/parameters/TeammateId"
+    get:
+      operationId: getTeammate
+      summary: Get a teammate with current scopes and supervision relationships
+      tags: [Teammates]
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Teammate
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DataEnvelopeTeammate"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /v1/teammates/{teammateId}/credentialing:
+    parameters:
+      - $ref: "#/components/parameters/TeammateId"
+    post:
+      operationId: submitCredentialingReview
+      summary: Submit a credentialing decision including in-population shadow results
+      description: >-
+        An agent may not receive live delegation until a credentialing review records
+        intended use, validation evidence, known failure modes, subgroup performance
+        and a completed shadow-mode period against this organisation's population.
+      tags: [Teammates]
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CredentialingDecision"
+      responses:
+        "201":
+          description: Credentialing decision recorded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DataEnvelopeValidationDossier"
+        "409":
+          description: Shadow-mode period incomplete or dossier missing subgroup evidence
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /v1/task-classes:
+    get:
+      operationId: listTaskClasses
+      summary: List delegatable clinical task classes and their supervision requirements
+      tags: [Scopes]
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+        - name: jurisdiction
+          in: query
+          schema:
+            type: string
+            example: US-OH
+      responses:
+        "200":
+          description: Task classes page
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListEnvelopeTaskClass"
+  /v1/scopes:
+    get:
+      operationId: listScopesOfPractice
+      summary: List published scopes of practice
+      tags: [Scopes]
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+        - name: teammateId
+          in: query
+          schema:
+            type: string
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [draft, published, suspended, revoked]
+      responses:
+        "200":
+          description: Scopes page
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListEnvelopeScopeOfPractice"
+    post:
+      operationId: publishScopeOfPractice
+      summary: Publish a new version of a teammate's scope of practice
+      tags: [Scopes]
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ScopeOfPracticeCreate"
+      responses:
+        "201":
+          description: Scope published and pinned by content hash
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DataEnvelopeScopeOfPractice"
+        "409":
+          description: Teammate not credentialed for one or more requested task classes
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /v1/scopes/{scopeId}/suspension:
+    parameters:
+      - $ref: "#/components/parameters/ScopeId"
+    post:
+      operationId: suspendScopeOfPractice
+      summary: Suspend a scope and reassign its in-flight tasks to human performers
+      tags: [Scopes]
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ScopeSuspensionCreate"
+      responses:
+        "202":
+          description: Suspension accepted and affected tasks queued for reassignment
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DataEnvelopeScopeSuspension"
+  /v1/patients/{patientId}/care-team:
+    parameters:
+      - $ref: "#/components/parameters/PatientId"
+    get:
+      operationId: getCareTeam
+      summary: Get the patient's care team including machine teammates and supervisors
+      tags: [Teammates]
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Care team
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DataEnvelopeCareTeam"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /v1/care-tasks:
+    get:
+      operationId: listCareTasks
+      summary: List plan-of-care tasks by performer, supervisor, or patient
+      tags: [Tasks]
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+        - name: patientId
+          in: query
+          schema:
+            type: string
+        - name: performerId
+          in: query
+          schema:
+            type: string
+        - name: supervisorId
+          in: query
+          schema:
+            type: string
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [unassigned, delegated, in_progress, escalated, completed, reassigned, lapsed]
+      responses:
+        "200":
+          description: Care tasks page
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListEnvelopeCareTask"
+    post:
+      operationId: createCareTask
+      summary: Create a plan-of-care task requiring an accountable performer
+      tags: [Tasks]
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CareTaskCreate"
+      responses:
+        "201":
+          description: Task created, awaiting delegation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DataEnvelopeCareTask"
+  /v1/care-tasks/{taskId}/delegation:
+    parameters:
+      - $ref: "#/components/parameters/TaskId"
+    post:
+      operationId: grantTaskDelegation
+      summary: Grant an expiring delegation naming performer, supervisor and consent basis
+      description: >-
+        Rejected when the task class falls outside the performer's published scope,
+        when no supervising clinician holds an adequate licence, or when the patient
+        has declined machine involvement for this task class.
+      tags: [Tasks]
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DelegationGrantCreate"
+      responses:
+        "201":
+          description: Delegation granted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DataEnvelopeDelegationGrant"
+        "409":
+          description: Task class outside scope, supervision inadequate, or consent declined
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+    delete:
+      operationId: revokeTaskDelegation
+      summary: Revoke a delegation immediately and return the task to a human performer
+      tags: [Tasks]
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: reasonCode
+          in: query
+          required: true
+          schema:
+            type: string
+            enum:
+              [clinical_change, patient_request, scope_suspended, supervisor_change, agent_defect]
+      responses:
+        "200":
+          description: Delegation revoked and task reassigned
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DataEnvelopeCareTask"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /v1/patients/{patientId}/consent:
+    parameters:
+      - $ref: "#/components/parameters/PatientId"
+    get:
+      operationId: getMachineInvolvementConsent
+      summary: Get machine-involvement consent by task class and data recipient
+      tags: [Consent]
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Consent record in force
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DataEnvelopeConsentRecord"
+    put:
+      operationId: setMachineInvolvementConsent
+      summary: Record or amend machine-involvement consent and recipient permissions
+      tags: [Consent]
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConsentRecordUpsert"
+      responses:
+        "200":
+          description: Consent recorded with comprehension attestation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DataEnvelopeConsentRecord"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+  /v1/patients/{patientId}/consent/withdrawal:
+    parameters:
+      - $ref: "#/components/parameters/PatientId"
+    post:
+      operationId: withdrawMachineInvolvement
+      summary: Withdraw machine involvement mid-episode and schedule human takeover
+      tags: [Consent]
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [taskClassCodes]
+              properties:
+                taskClassCodes:
+                  type: array
+                  items:
+                    type: string
+                humanTakeoverBy:
+                  type: string
+                  format: date-time
+                  description: Deadline by which a human performer must hold the task
+                statedReason:
+                  type: string
+      responses:
+        "202":
+          description: Withdrawal accepted, affected tasks routed to human fallback
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DataEnvelopeConsentRecord"
+  /v1/escalations:
+    get:
+      operationId: listEscalations
+      summary: List escalations by tier, acknowledgement state, or recipient
+      tags: [Escalations]
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+        - name: state
+          in: query
+          schema:
+            type: string
+            enum: [raised, acknowledged, promoted, resolved]
+        - name: recipientId
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Escalations page
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListEnvelopeEscalationEvent"
+    post:
+      operationId: raiseEscalation
+      summary: Raise a deterioration escalation with triggering evidence
+      tags: [Escalations]
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EscalationCreate"
+      responses:
+        "201":
+          description: Escalation raised with acknowledgement deadline and tier ladder
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DataEnvelopeEscalationEvent"
+        "403":
+          description: Raising teammate lacks scope for this task class
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /v1/escalations/{escalationId}/acknowledgement:
+    parameters:
+      - $ref: "#/components/parameters/EscalationId"
+    post:
+      operationId: acknowledgeEscalation
+      summary: Acknowledge an escalation and stop automatic tier promotion
+      tags: [Escalations]
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [acknowledgedBy]
+              properties:
+                acknowledgedBy:
+                  type: string
+                clinicalDisposition:
+                  type: string
+                  enum: [monitor, contact_patient, in_person_visit, emergency_transfer, no_action]
+                note:
+                  type: string
+      responses:
+        "200":
+          description: Escalation acknowledged
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DataEnvelopeEscalationEvent"
+  /v1/handoffs:
+    post:
+      operationId: offerHandoff
+      summary: Offer accountability transfer with open problems and pending results
+      tags: [Handoffs]
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/HandoffCreate"
+      responses:
+        "201":
+          description: Handoff offered, accountability not yet transferred
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DataEnvelopeHandoff"
+  /v1/handoffs/{handoffId}/acceptance:
+    parameters:
+      - $ref: "#/components/parameters/HandoffId"
+    post:
+      operationId: acceptHandoff
+      summary: Accept a handoff and take accountability for its tasks
+      tags: [Handoffs]
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [acceptedBy]
+              properties:
+                acceptedBy:
+                  type: string
+                unresolvedItemsAcknowledged:
+                  type: boolean
+      responses:
+        "200":
+          description: Handoff accepted and accountability transferred
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DataEnvelopeHandoff"
+        "409":
+          description: Handoff lapsed and tasks returned to the offering teammate
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /v1/overrides:
+    post:
+      operationId: recordOverride
+      summary: Record a one-step clinician override of a machine recommendation
+      tags: [Surveillance]
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OverrideEventCreate"
+      responses:
+        "201":
+          description: Override recorded, never blocked
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DataEnvelopeOverrideEvent"
+  /v1/surveillance/subgroup-performance:
+    get:
+      operationId: listSubgroupPerformance
+      summary: List agent performance against credentialed claim by subgroup
+      tags: [Surveillance]
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+        - name: teammateId
+          in: query
+          schema:
+            type: string
+        - name: breachedOnly
+          in: query
+          schema:
+            type: boolean
+            default: false
+      responses:
+        "200":
+          description: Subgroup performance metrics page
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListEnvelopeSubgroupPerformanceMetric"
+  /v1/surveillance/panel-capacity:
+    get:
+      operationId: getPanelCapacitySnapshot
+      summary: Get supervised panel per FTE alongside escalation-to-recognition time
+      tags: [Surveillance]
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: period
+          in: query
+          schema:
+            type: string
+            example: 2026-08
+        - name: unitId
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Panel capacity snapshot with paired safety indicator
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DataEnvelopePanelCapacitySnapshot"
+  /v1/safety-events:
+    get:
+      operationId: listSafetyEvents
+      summary: List near-miss and harm events involving machine teammates
+      tags: [Safety]
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+        - name: severity
+          in: query
+          schema:
+            type: string
+            enum: [near_miss, no_harm, temporary_harm, permanent_harm, death]
+      responses:
+        "200":
+          description: Safety events page
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListEnvelopeSafetyEvent"
+    post:
+      operationId: openSafetyEvent
+      summary: Open a safety event bound to task, agent version and consent state
+      tags: [Safety]
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SafetyEventCreate"
+      responses:
+        "201":
+          description: Safety event opened with reporting deadline
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DataEnvelopeSafetyEvent"
+  /v1/audit/care-tasks/{taskId}:
+    parameters:
+      - $ref: "#/components/parameters/TaskId"
+    get:
+      operationId: getTaskAccountabilityRecord
+      summary: Reconstruct performer, supervisor, agent version, scope and consent for a task
+      tags: [Audit]
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Accountability record suitable for legal or regulatory production
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DataEnvelopeAccountabilityRecord"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /v1/audit/access:
+    get:
+      operationId: listAccessAuditEntries
+      summary: List which teammates read a patient record and for which task
+      tags: [Audit]
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+        - name: patientId
+          in: query
+          schema:
+            type: string
+        - name: teammateId
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Access audit entries page
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListEnvelopeAccessAuditEntry"
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  parameters:
+    Cursor:
+      name: cursor
+      in: query
+      schema:
+        type: string
+    Limit:
+      name: limit
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 200
+        default: 50
+    TeammateId:
+      name: teammateId
+      in: path
+      required: true
+      schema:
+        type: string
+    ScopeId:
+      name: scopeId
+      in: path
+      required: true
+      schema:
+        type: string
+    PatientId:
+      name: patientId
+      in: path
+      required: true
+      schema:
+        type: string
+    TaskId:
+      name: taskId
+      in: path
+      required: true
+      schema:
+        type: string
+    EscalationId:
+      name: escalationId
+      in: path
+      required: true
+      schema:
+        type: string
+    HandoffId:
+      name: handoffId
+      in: path
+      required: true
+      schema:
+        type: string
+  responses:
+    Unauthorized:
+      description: Missing or invalid credentials
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+    UnprocessableEntity:
+      description: Validation failed
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+  schemas:
+    ResponseMeta:
+      type: object
+      required: [requestId, timestamp]
+      properties:
+        requestId:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+    Problem:
+      type: object
+      required: [type, title, status]
+      properties:
+        type:
+          type: string
+          format: uri
+        title:
+          type: string
+        status:
+          type: integer
+        detail:
+          type: string
+        scopeViolationCode:
+          type: string
+          description: Populated when refusal was caused by a scope or consent boundary
+    Patient:
+      type: object
+      required: [id, mrn]
+      properties:
+        id:
+          type: string
+        mrn:
+          type: string
+          description: Medical record number in the EHR of record
+        fhirPatientRef:
+          type: string
+          example: Patient/9f2c
+        primaryLanguage:
+          type: string
+        payerClass:
+          type: string
+          enum: [commercial, medicare, medicaid, dual_eligible, self_pay, other]
+        monitoringProgramme:
+          type: string
+          enum: [heart_failure, copd, diabetes_insulin, post_surgical, oncology_supportive, none]
+    CareTeam:
+      type: object
+      required: [id, patientId, members]
+      properties:
+        id:
+          type: string
+        patientId:
+          type: string
+        members:
+          type: array
+          items:
+            type: object
+            required: [teammateId, role]
+            properties:
+              teammateId:
+                type: string
+              role:
+                type: string
+                enum:
+                  [
+                    attending_physician,
+                    nurse_practitioner,
+                    care_manager_rn,
+                    medical_assistant,
+                    community_health_worker,
+                    monitoring_agent,
+                    triage_agent,
+                    documentation_agent,
+                    family_caregiver,
+                  ]
+              supervisingTeammateId:
+                type: string
+        machineFreePathAvailable:
+          type: boolean
+          description: True when a fully human staffing option exists for this patient's programme
+    Teammate:
+      type: object
+      required: [id, kind, displayName, rosterStatus]
+      properties:
+        id:
+          type: string
+        kind:
+          type: string
+          enum: [human_clinician, machine_agent]
+        displayName:
+          type: string
+        rosterStatus:
+          type: string
+          enum: [candidate, shadow, live, suspended, retired]
+        licence:
+          type: object
+          description: Present for human clinicians
+          properties:
+            licenceType:
+              type: string
+              enum: [MD, DO, NP, PA, RN, LPN, MA, CHW, PharmD]
+            licenceNumber:
+              type: string
+            jurisdictions:
+              type: array
+              items:
+                type: string
+        machineProfile:
+          $ref: "#/components/schemas/MachineAgentProfile"
+        activeScopeIds:
+          type: array
+          items:
+            type: string
+    TeammateCreate:
+      type: object
+      required: [kind, displayName]
+      properties:
+        kind:
+          type: string
+          enum: [human_clinician, machine_agent]
+        displayName:
+          type: string
+        licenceType:
+          type: string
+          enum: [MD, DO, NP, PA, RN, LPN, MA, CHW, PharmD]
+        licenceNumber:
+          type: string
+        jurisdictions:
+          type: array
+          items:
+            type: string
+        machineProfile:
+          $ref: "#/components/schemas/MachineAgentProfile"
+    MachineAgentProfile:
+      type: object
+      required: [vendor, agentVersion, intendedUse]
+      properties:
+        vendor:
+          type: string
+        agentVersion:
+          type: string
+          example: 4.2.1
+        intendedUse:
+          type: string
+          description: Labelled intended use as claimed by the vendor
+        autonomyLevel:
+          type: string
+          enum: [advisory_only, act_then_notify, act_under_standing_order, autonomous_within_scope]
+        regulatoryClassification:
+          type: string
+          enum:
+            [
+              not_a_medical_device,
+              clinical_decision_support_exempt,
+              samd_class_i,
+              samd_class_ii,
+              samd_class_iii,
+            ]
+        knownFailureModes:
+          type: array
+          items:
+            type: string
+        modelCardUri:
+          type: string
+          format: uri
+    ValidationDossier:
+      type: object
+      required: [id, teammateId, agentVersion, decision]
+      properties:
+        id:
+          type: string
+        teammateId:
+          type: string
+        agentVersion:
+          type: string
+        decision:
+          type: string
+          enum: [approved_for_shadow, approved_for_live, deferred, rejected]
+        shadowModeStart:
+          type: string
+          format: date
+        shadowModeEnd:
+          type: string
+          format: date
+        shadowPatientCount:
+          type: integer
+        headlineSensitivity:
+          type: number
+          format: float
+        headlineSpecificity:
+          type: number
+          format: float
+        subgroupEvidenceComplete:
+          type: boolean
+        reviewCommittee:
+          type: string
+        reviewedBy:
+          type: array
+          items:
+            type: string
+        conditionsOfUse:
+          type: array
+          items:
+            type: string
+    CredentialingDecision:
+      type: object
+      required: [agentVersion, decision, reviewCommittee]
+      properties:
+        agentVersion:
+          type: string
+        decision:
+          type: string
+          enum: [approved_for_shadow, approved_for_live, deferred, rejected]
+        shadowModeStart:
+          type: string
+          format: date
+        shadowModeEnd:
+          type: string
+          format: date
+        shadowPatientCount:
+          type: integer
+        headlineSensitivity:
+          type: number
+          format: float
+        headlineSpecificity:
+          type: number
+          format: float
+        reviewCommittee:
+          type: string
+        conditionsOfUse:
+          type: array
+          items:
+            type: string
+    TaskClass:
+      type: object
+      required: [code, label, minimumSupervisionTier]
+      properties:
+        code:
+          type: string
+          example: nocturnal_vitals_surveillance
+        label:
+          type: string
+        clinicalCategory:
+          type: string
+          enum:
+            [
+              surveillance,
+              triage,
+              medication_management,
+              patient_education,
+              documentation,
+              navigation,
+              procedure_assistance,
+            ]
+        minimumSupervisionTier:
+          type: string
+          enum: [none, rn_oversight, np_pa_oversight, physician_oversight, physician_cosign]
+        machineDelegable:
+          type: boolean
+        jurisdictionRestrictions:
+          type: array
+          items:
+            type: string
+        patientConsentRequired:
+          type: boolean
+    ScopeOfPractice:
+      type: object
+      required: [id, teammateId, version, status, taskClassCodes]
+      properties:
+        id:
+          type: string
+        teammateId:
+          type: string
+        version:
+          type: integer
+        status:
+          type: string
+          enum: [draft, published, suspended, revoked]
+        taskClassCodes:
+          type: array
+          items:
+            type: string
+        prohibitedActions:
+          type: array
+          items:
+            type: string
+          description: Explicit refusals the agent must issue rather than attempt
+        supervisionTier:
+          type: string
+          enum: [none, rn_oversight, np_pa_oversight, physician_oversight, physician_cosign]
+        jurisdictions:
+          type: array
+          items:
+            type: string
+        performanceFloors:
+          type: array
+          items:
+            $ref: "#/components/schemas/PerformanceFloor"
+        contentHash:
+          type: string
+          description: Pins the exact scope text referenced by every delegation grant
+        publishedBy:
+          type: string
+        publishedAt:
+          type: string
+          format: date-time
+    ScopeOfPracticeCreate:
+      type: object
+      required: [teammateId, taskClassCodes, supervisionTier]
+      properties:
+        teammateId:
+          type: string
+        taskClassCodes:
+          type: array
+          items:
+            type: string
+        prohibitedActions:
+          type: array
+          items:
+            type: string
+        supervisionTier:
+          type: string
+          enum: [none, rn_oversight, np_pa_oversight, physician_oversight, physician_cosign]
+        jurisdictions:
+          type: array
+          items:
+            type: string
+        performanceFloors:
+          type: array
+          items:
+            $ref: "#/components/schemas/PerformanceFloor"
+    PerformanceFloor:
+      type: object
+      required: [metric, minimumValue]
+      properties:
+        metric:
+          type: string
+          enum: [sensitivity, specificity, positive_predictive_value, escalation_recall]
+        minimumValue:
+          type: number
+          format: float
+        appliesToSubgroupDimension:
+          type: string
+          enum: [all, age_band, sex, race_ethnicity, primary_language, payer_class]
+    ScopeSuspensionCreate:
+      type: object
+      required: [reason, initiatedBy]
+      properties:
+        reason:
+          type: string
+          enum:
+            [
+              subgroup_floor_breach,
+              safety_event,
+              vendor_recall,
+              validation_expired,
+              governance_decision,
+            ]
+        initiatedBy:
+          type: string
+        detail:
+          type: string
+        reassignInFlightTasks:
+          type: boolean
+          default: true
+    ScopeSuspension:
+      type: object
+      required: [id, scopeId, reason, suspendedAt]
+      properties:
+        id:
+          type: string
+        scopeId:
+          type: string
+        reason:
+          type: string
+        detail:
+          type: string
+        suspendedAt:
+          type: string
+          format: date-time
+        initiatedBy:
+          type: string
+        tasksReassigned:
+          type: integer
+        vendorNotifiedAt:
+          type: string
+          format: date-time
+        reinstatedAt:
+          type: string
+          format: date-time
+    CareTask:
+      type: object
+      required: [id, patientId, taskClassCode, status]
+      properties:
+        id:
+          type: string
+        patientId:
+          type: string
+        taskClassCode:
+          type: string
+        status:
+          type: string
+          enum: [unassigned, delegated, in_progress, escalated, completed, reassigned, lapsed]
+        performerTeammateId:
+          type: string
+        supervisorTeammateId:
+          type: string
+        activeGrantId:
+          type: string
+        fhirTaskRef:
+          type: string
+          example: Task/3ab9
+        dueAt:
+          type: string
+          format: date-time
+        documentationMinutes:
+          type: number
+          format: float
+          description: Clinician minutes spent documenting, measured against baseline
+    CareTaskCreate:
+      type: object
+      required: [patientId, taskClassCode]
+      properties:
+        patientId:
+          type: string
+        taskClassCode:
+          type: string
+        dueAt:
+          type: string
+          format: date-time
+        clinicalContext:
+          type: string
+    DelegationGrantCreate:
+      type: object
+      required: [performerTeammateId, supervisorTeammateId, expiresAt]
+      properties:
+        performerTeammateId:
+          type: string
+        supervisorTeammateId:
+          type: string
+        expiresAt:
+          type: string
+          format: date-time
+        escalationTierLadder:
+          type: array
+          items:
+            $ref: "#/components/schemas/EscalationTier"
+        standingOrderRef:
+          type: string
+    DelegationGrant:
+      type: object
+      required: [id, taskId, performerTeammateId, supervisorTeammateId, status]
+      properties:
+        id:
+          type: string
+        taskId:
+          type: string
+        performerTeammateId:
+          type: string
+        supervisorTeammateId:
+          type: string
+        supervisorLicenceType:
+          type: string
+        scopeId:
+          type: string
+        scopeContentHash:
+          type: string
+        consentRecordId:
+          type: string
+        consentSnapshot:
+          type: string
+          description: Consent state captured at grant time rather than referenced by pointer
+        status:
+          type: string
+          enum: [active, expired, revoked, suspended]
+        grantedAt:
+          type: string
+          format: date-time
+        expiresAt:
+          type: string
+          format: date-time
+        revocationReasonCode:
+          type: string
+        escalationTierLadder:
+          type: array
+          items:
+            $ref: "#/components/schemas/EscalationTier"
+    EscalationTier:
+      type: object
+      required: [tier, recipientTeammateId, acknowledgeWithinMinutes]
+      properties:
+        tier:
+          type: integer
+          minimum: 1
+        recipientTeammateId:
+          type: string
+        acknowledgeWithinMinutes:
+          type: integer
+        channel:
+          type: string
+          enum: [worklist, secure_message, page, phone, rapid_response]
+    ConsentRecord:
+      type: object
+      required: [id, patientId, status]
+      properties:
+        id:
+          type: string
+        patientId:
+          type: string
+        status:
+          type: string
+          enum: [granted, restricted, declined, withdrawn]
+        machineInvolvementByTaskClass:
+          type: array
+          items:
+            type: object
+            required: [taskClassCode, decision]
+            properties:
+              taskClassCode:
+                type: string
+              decision:
+                type: string
+                enum: [permitted, human_only]
+        recipientPermissions:
+          type: array
+          items:
+            type: object
+            required: [recipientType, permitted]
+            properties:
+              recipientType:
+                type: string
+                enum:
+                  [
+                    treating_physician,
+                    nurse_or_other_hcp,
+                    machine_teammate,
+                    family_caregiver,
+                    health_plan,
+                    research_secondary_use,
+                  ]
+              permitted:
+                type: boolean
+        comprehensionAttested:
+          type: boolean
+          description: Patient confirmed the plain-language explanation of agent role and limits
+        explanationVersion:
+          type: string
+        fhirConsentRef:
+          type: string
+        recordedAt:
+          type: string
+          format: date-time
+        withdrawnAt:
+          type: string
+          format: date-time
+        humanTakeoverDueBy:
+          type: string
+          format: date-time
+    ConsentRecordUpsert:
+      type: object
+      required: [machineInvolvementByTaskClass, comprehensionAttested]
+      properties:
+        machineInvolvementByTaskClass:
+          type: array
+          items:
+            type: object
+            required: [taskClassCode, decision]
+            properties:
+              taskClassCode:
+                type: string
+              decision:
+                type: string
+                enum: [permitted, human_only]
+        recipientPermissions:
+          type: array
+          items:
+            type: object
+            required: [recipientType, permitted]
+            properties:
+              recipientType:
+                type: string
+                enum:
+                  [
+                    treating_physician,
+                    nurse_or_other_hcp,
+                    machine_teammate,
+                    family_caregiver,
+                    health_plan,
+                    research_secondary_use,
+                  ]
+              permitted:
+                type: boolean
+        comprehensionAttested:
+          type: boolean
+        explanationVersion:
+          type: string
+    EscalationCreate:
+      type: object
+      required: [taskId, trigger]
+      properties:
+        taskId:
+          type: string
+        trigger:
+          type: string
+          enum:
+            [
+              vital_threshold_breach,
+              trend_deterioration,
+              missed_medication,
+              patient_reported_symptom,
+              device_silence,
+              triage_red_flag,
+            ]
+        evidence:
+          type: array
+          items:
+            type: object
+            properties:
+              observationRef:
+                type: string
+              value:
+                type: string
+              recordedAt:
+                type: string
+                format: date-time
+        agentConfidence:
+          type: number
+          format: float
+        startingTier:
+          type: integer
+    EscalationEvent:
+      type: object
+      required: [id, taskId, patientId, state, currentTier]
+      properties:
+        id:
+          type: string
+        taskId:
+          type: string
+        patientId:
+          type: string
+        raisedByTeammateId:
+          type: string
+        trigger:
+          type: string
+        state:
+          type: string
+          enum: [raised, acknowledged, promoted, resolved]
+        currentTier:
+          type: integer
+        acknowledgeDeadline:
+          type: string
+          format: date-time
+        promotionCount:
+          type: integer
+        agentConfidence:
+          type: number
+          format: float
+        knownFailureModesShown:
+          type: array
+          items:
+            type: string
+        raisedAt:
+          type: string
+          format: date-time
+        acknowledgedAt:
+          type: string
+          format: date-time
+        acknowledgedBy:
+          type: string
+        recognitionLatencySeconds:
+          type: integer
+        clinicalDisposition:
+          type: string
+    HandoffCreate:
+      type: object
+      required: [fromTeammateId, toTeammateId, taskIds]
+      properties:
+        fromTeammateId:
+          type: string
+        toTeammateId:
+          type: string
+        taskIds:
+          type: array
+          items:
+            type: string
+        openProblems:
+          type: array
+          items:
+            type: string
+        pendingResults:
+          type: array
+          items:
+            type: string
+        unresolvedRisks:
+          type: array
+          items:
+            type: string
+        acceptWithinMinutes:
+          type: integer
+    Handoff:
+      type: object
+      required: [id, fromTeammateId, toTeammateId, status]
+      properties:
+        id:
+          type: string
+        fromTeammateId:
+          type: string
+        toTeammateId:
+          type: string
+        taskIds:
+          type: array
+          items:
+            type: string
+        openProblems:
+          type: array
+          items:
+            type: string
+        pendingResults:
+          type: array
+          items:
+            type: string
+        unresolvedRisks:
+          type: array
+          items:
+            type: string
+        status:
+          type: string
+          enum: [offered, accepted, lapsed, returned]
+        offeredAt:
+          type: string
+          format: date-time
+        acceptDeadline:
+          type: string
+          format: date-time
+        acceptedAt:
+          type: string
+          format: date-time
+        acceptedBy:
+          type: string
+    OverrideEventCreate:
+      type: object
+      required: [taskId, recommendation, reasonCode]
+      properties:
+        taskId:
+          type: string
+        agentTeammateId:
+          type: string
+        recommendation:
+          type: string
+        reasonCode:
+          type: string
+          enum:
+            [
+              clinically_wrong,
+              missing_context,
+              already_addressed,
+              patient_preference,
+              too_low_acuity,
+              alert_not_actionable,
+            ]
+        freeTextNote:
+          type: string
+    OverrideEvent:
+      type: object
+      required: [id, taskId, reasonCode, recordedAt]
+      properties:
+        id:
+          type: string
+        taskId:
+          type: string
+        agentTeammateId:
+          type: string
+        agentVersion:
+          type: string
+        clinicianTeammateId:
+          type: string
+        recommendation:
+          type: string
+        reasonCode:
+          type: string
+        recordedAt:
+          type: string
+          format: date-time
+        secondsToRecord:
+          type: integer
+          description: Kept low by design so that recording disagreement costs nothing
+    SubgroupPerformanceMetric:
+      type: object
+      required: [id, teammateId, subgroupDimension, subgroupValue, metric, value]
+      properties:
+        id:
+          type: string
+        teammateId:
+          type: string
+        agentVersion:
+          type: string
+        taskClassCode:
+          type: string
+        subgroupDimension:
+          type: string
+          enum: [age_band, sex, race_ethnicity, primary_language, payer_class]
+        subgroupValue:
+          type: string
+        metric:
+          type: string
+          enum: [sensitivity, specificity, positive_predictive_value, escalation_recall]
+        value:
+          type: number
+          format: float
+        floorValue:
+          type: number
+          format: float
+        breached:
+          type: boolean
+        sampleSize:
+          type: integer
+        windowStart:
+          type: string
+          format: date
+        windowEnd:
+          type: string
+          format: date
+        triggeredSuspensionId:
+          type: string
+    SafetyEventCreate:
+      type: object
+      required: [taskId, severity, narrative]
+      properties:
+        taskId:
+          type: string
+        severity:
+          type: string
+          enum: [near_miss, no_harm, temporary_harm, permanent_harm, death]
+        narrative:
+          type: string
+        machineContribution:
+          type: string
+          enum:
+            [
+              failed_to_detect,
+              false_escalation,
+              acted_outside_scope,
+              delayed_action,
+              human_override_error,
+              not_contributory,
+            ]
+        reportedBy:
+          type: string
+    SafetyEvent:
+      type: object
+      required: [id, taskId, severity, status]
+      properties:
+        id:
+          type: string
+        taskId:
+          type: string
+        patientId:
+          type: string
+        severity:
+          type: string
+          enum: [near_miss, no_harm, temporary_harm, permanent_harm, death]
+        machineContribution:
+          type: string
+        narrative:
+          type: string
+        agentTeammateId:
+          type: string
+        agentVersion:
+          type: string
+        supervisorTeammateId:
+          type: string
+        consentSnapshot:
+          type: string
+        status:
+          type: string
+          enum: [open, under_review, closed, escalated_to_regulator]
+        reportingDeadline:
+          type: string
+          format: date-time
+        incidentSystemRef:
+          type: string
+        postMarketSurveillanceReportable:
+          type: boolean
+        openedAt:
+          type: string
+          format: date-time
+    AccessAuditEntry:
+      type: object
+      required: [id, patientId, teammateId, accessedAt]
+      properties:
+        id:
+          type: string
+        patientId:
+          type: string
+        teammateId:
+          type: string
+        teammateKind:
+          type: string
+          enum: [human_clinician, machine_agent]
+        taskId:
+          type: string
+        dataCategory:
+          type: string
+          enum:
+            [
+              vitals_stream,
+              medication_list,
+              lab_results,
+              imaging,
+              clinical_notes,
+              consent_record,
+              demographics,
+            ]
+        purpose:
+          type: string
+          enum: [treatment, supervision, quality_review, secondary_use, audit]
+        accessedAt:
+          type: string
+          format: date-time
+        grantId:
+          type: string
+    PanelCapacitySnapshot:
+      type: object
+      required: [period, supervisedPanelPerClinicianFte]
+      properties:
+        period:
+          type: string
+        unitId:
+          type: string
+        supervisedPanelPerClinicianFte:
+          type: number
+          format: float
+        baselinePanelPerClinicianFte:
+          type: number
+          format: float
+        medianRecognitionLatencySeconds:
+          type: integer
+        baselineRecognitionLatencySeconds:
+          type: integer
+        documentationMinutesPerEncounter:
+          type: number
+          format: float
+        baselineDocumentationMinutesPerEncounter:
+          type: number
+          format: float
+        machineDelegatedTaskShare:
+          type: number
+          format: float
+        safetyEventsPerThousandMachineTasks:
+          type: number
+          format: float
+        capacityGainAdmissible:
+          type: boolean
+          description: False when capacity rose while recognition latency also rose
+    AccountabilityRecord:
+      type: object
+      required: [taskId, performerTeammateId, supervisorTeammateId]
+      properties:
+        taskId:
+          type: string
+        patientId:
+          type: string
+        taskClassCode:
+          type: string
+        performerTeammateId:
+          type: string
+        performerKind:
+          type: string
+          enum: [human_clinician, machine_agent]
+        agentVersion:
+          type: string
+        scopeId:
+          type: string
+        scopeContentHash:
+          type: string
+        supervisorTeammateId:
+          type: string
+        supervisorLicenceType:
+          type: string
+        consentSnapshot:
+          type: string
+        grantHistory:
+          type: array
+          items:
+            $ref: "#/components/schemas/DelegationGrant"
+        escalations:
+          type: array
+          items:
+            $ref: "#/components/schemas/EscalationEvent"
+        overrides:
+          type: array
+          items:
+            $ref: "#/components/schemas/OverrideEvent"
+        handoffs:
+          type: array
+          items:
+            $ref: "#/components/schemas/Handoff"
+        accessTrail:
+          type: array
+          items:
+            $ref: "#/components/schemas/AccessAuditEntry"
+        safetyEventIds:
+          type: array
+          items:
+            type: string
+        ledgerSequence:
+          type: integer
+        exportedAt:
+          type: string
+          format: date-time
+    DataEnvelopeTeammate:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          $ref: "#/components/schemas/Teammate"
+        meta:
+          $ref: "#/components/schemas/ResponseMeta"
+    DataEnvelopeValidationDossier:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          $ref: "#/components/schemas/ValidationDossier"
+        meta:
+          $ref: "#/components/schemas/ResponseMeta"
+    DataEnvelopeScopeOfPractice:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          $ref: "#/components/schemas/ScopeOfPractice"
+        meta:
+          $ref: "#/components/schemas/ResponseMeta"
+    DataEnvelopeScopeSuspension:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          $ref: "#/components/schemas/ScopeSuspension"
+        meta:
+          $ref: "#/components/schemas/ResponseMeta"
+    DataEnvelopeCareTeam:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          $ref: "#/components/schemas/CareTeam"
+        meta:
+          $ref: "#/components/schemas/ResponseMeta"
+    DataEnvelopeCareTask:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          $ref: "#/components/schemas/CareTask"
+        meta:
+          $ref: "#/components/schemas/ResponseMeta"
+    DataEnvelopeDelegationGrant:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          $ref: "#/components/schemas/DelegationGrant"
+        meta:
+          $ref: "#/components/schemas/ResponseMeta"
+    DataEnvelopeConsentRecord:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          $ref: "#/components/schemas/ConsentRecord"
+        meta:
+          $ref: "#/components/schemas/ResponseMeta"
+    DataEnvelopeEscalationEvent:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          $ref: "#/components/schemas/EscalationEvent"
+        meta:
+          $ref: "#/components/schemas/ResponseMeta"
+    DataEnvelopeHandoff:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          $ref: "#/components/schemas/Handoff"
+        meta:
+          $ref: "#/components/schemas/ResponseMeta"
+    DataEnvelopeOverrideEvent:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          $ref: "#/components/schemas/OverrideEvent"
+        meta:
+          $ref: "#/components/schemas/ResponseMeta"
+    DataEnvelopePanelCapacitySnapshot:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          $ref: "#/components/schemas/PanelCapacitySnapshot"
+        meta:
+          $ref: "#/components/schemas/ResponseMeta"
+    DataEnvelopeSafetyEvent:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          $ref: "#/components/schemas/SafetyEvent"
+        meta:
+          $ref: "#/components/schemas/ResponseMeta"
+    DataEnvelopeAccountabilityRecord:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          $ref: "#/components/schemas/AccountabilityRecord"
+        meta:
+          $ref: "#/components/schemas/ResponseMeta"
+    DataEnvelopePatient:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          $ref: "#/components/schemas/Patient"
+        meta:
+          $ref: "#/components/schemas/ResponseMeta"
+    ListEnvelopeTeammate:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: object
+          required: [items]
+          properties:
+            items:
+              type: array
+              items:
+                $ref: "#/components/schemas/Teammate"
+            nextCursor:
+              type: string
+        meta:
+          $ref: "#/components/schemas/ResponseMeta"
+    ListEnvelopeTaskClass:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: object
+          required: [items]
+          properties:
+            items:
+              type: array
+              items:
+                $ref: "#/components/schemas/TaskClass"
+            nextCursor:
+              type: string
+        meta:
+          $ref: "#/components/schemas/ResponseMeta"
+    ListEnvelopeScopeOfPractice:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: object
+          required: [items]
+          properties:
+            items:
+              type: array
+              items:
+                $ref: "#/components/schemas/ScopeOfPractice"
+            nextCursor:
+              type: string
+        meta:
+          $ref: "#/components/schemas/ResponseMeta"
+    ListEnvelopeCareTask:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: object
+          required: [items]
+          properties:
+            items:
+              type: array
+              items:
+                $ref: "#/components/schemas/CareTask"
+            nextCursor:
+              type: string
+        meta:
+          $ref: "#/components/schemas/ResponseMeta"
+    ListEnvelopeEscalationEvent:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: object
+          required: [items]
+          properties:
+            items:
+              type: array
+              items:
+                $ref: "#/components/schemas/EscalationEvent"
+            nextCursor:
+              type: string
+        meta:
+          $ref: "#/components/schemas/ResponseMeta"
+    ListEnvelopeSubgroupPerformanceMetric:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: object
+          required: [items]
+          properties:
+            items:
+              type: array
+              items:
+                $ref: "#/components/schemas/SubgroupPerformanceMetric"
+            nextCursor:
+              type: string
+        meta:
+          $ref: "#/components/schemas/ResponseMeta"
+    ListEnvelopeSafetyEvent:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: object
+          required: [items]
+          properties:
+            items:
+              type: array
+              items:
+                $ref: "#/components/schemas/SafetyEvent"
+            nextCursor:
+              type: string
+        meta:
+          $ref: "#/components/schemas/ResponseMeta"
+    ListEnvelopeAccessAuditEntry:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: object
+          required: [items]
+          properties:
+            items:
+              type: array
+              items:
+                $ref: "#/components/schemas/AccessAuditEntry"
+            nextCursor:
+              type: string
+        meta:
+          $ref: "#/components/schemas/ResponseMeta"
